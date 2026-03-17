@@ -1,6 +1,8 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # -----------------------------
 # Load Dataset
@@ -163,6 +165,60 @@ def precision_recall_at_k(user_id, k=5):
 
     return precision, recall
 
+    # Create user-item matrix
+user_item_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+
+# Compute user-user similarity
+user_similarity = cosine_similarity(user_item_matrix)
+
+# Convert to DataFrame for easy handling
+user_similarity_df = pd.DataFrame(user_similarity, index=user_item_matrix.index, columns=user_item_matrix.index)
+
+
+def predict_rating(user_id, movie_id, k=5):
+    if movie_id not in user_item_matrix.columns:
+        return 0
+
+    # Similar users
+    sim_users = user_similarity_df[user_id].sort_values(ascending=False)[1:k+1]
+
+    numerator = 0
+    denominator = 0
+
+    for sim_user, similarity in sim_users.items():
+        rating = user_item_matrix.loc[sim_user, movie_id]
+
+        if rating > 0:
+            numerator += similarity * rating
+            denominator += similarity
+
+    if denominator == 0:
+        return 0
+
+    return numerator / denominator
+
+
+def recommend_cf(user_id, top_n=5):
+    movies_not_rated = user_item_matrix.loc[user_id]
+    movies_not_rated = movies_not_rated[movies_not_rated == 0].index
+
+    predictions = []
+
+    for movie_id in movies_not_rated:
+        pred = predict_rating(user_id, movie_id)
+        predictions.append((movie_id, pred))
+
+    # Sort predictions
+    predictions = sorted(predictions, key=lambda x: x[1], reverse=True)[:top_n]
+
+    movie_ids = [i[0] for i in predictions]
+    scores = [i[1] for i in predictions]
+
+    results = movies[movies['movieId'].isin(movie_ids)][['title']].copy()
+    results['predicted_rating'] = scores
+
+    return results
+
 
 # -----------------------------
 # Test User-Based Recommendation
@@ -187,3 +243,14 @@ if __name__ == "__main__":
 
     print(f"Precision@5: {precision:.4f}")
     print(f"Recall@5: {recall:.4f}")
+
+    # -----------------------------
+    # User-Based CF Test
+    # -----------------------------
+    print("\nUser-Based Collaborative Filtering Recommendations:\n")
+
+    cf_recommendations = recommend_cf(user_id=1, top_n=5)
+
+    print(cf_recommendations)
+
+
