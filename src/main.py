@@ -3,6 +3,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+from scipy.sparse.linalg import svds
 
 # -----------------------------
 # Load Dataset
@@ -283,6 +284,42 @@ def recommend_item_based(user_id, top_n=5):
 
     return results
 
+def svd_recommend(user_id, top_n=5):
+    # Convert to numpy matrix
+    R = user_item_matrix.values
+
+    # Normalize by subtracting user mean
+    user_ratings_mean = np.mean(R, axis=1)
+    R_demeaned = R - user_ratings_mean.reshape(-1, 1)
+
+    # Apply SVD
+    U, sigma, Vt = svds(R_demeaned, k=50)
+
+    # Convert sigma to diagonal matrix
+    sigma = np.diag(sigma)
+
+    # Reconstruct ratings
+    R_pred = np.dot(np.dot(U, sigma), Vt) + user_ratings_mean.reshape(-1, 1)
+
+    # Convert to DataFrame
+    preds_df = pd.DataFrame(R_pred, columns=user_item_matrix.columns, index=user_item_matrix.index)
+
+    # Get user's predicted ratings
+    user_row = preds_df.loc[user_id]
+
+    # Remove already rated movies
+    already_rated = user_item_matrix.loc[user_id]
+    user_row = user_row[already_rated == 0]
+
+    # Sort predictions
+    top_movies = user_row.sort_values(ascending=False).head(top_n)
+
+    # Map movie IDs to titles
+    results = movies[movies['movieId'].isin(top_movies.index)][['title']].copy()
+    results['predicted_rating'] = top_movies.values
+
+    return results
+
 
 # -----------------------------
 # Test User-Based Recommendation
@@ -325,5 +362,13 @@ if __name__ == "__main__":
     item_cf_recommendations = recommend_item_based(user_id=1, top_n=5)
 
     print(item_cf_recommendations)
+
+    # -----------------------------
+    # SVD Recommendation
+    # -----------------------------
+    print("\nSVD Recommendations:\n")
+
+    svd_results = svd_recommend(user_id=1, top_n=5)
+    print(svd_results)
 
 
