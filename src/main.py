@@ -131,15 +131,59 @@ def recommend_for_user(user_id, top_n=5):
 
     return results
 
+# -----------------------------
+# Evaluation Metrics
+# -----------------------------
+
+def precision_recall_at_k(user_id, k=5):
+    # Get recommended movies
+    recommendations = recommend_for_user(user_id, top_n=k)
+
+    if recommendations is None:
+        return None
+
+    recommended_titles = set(recommendations['title'])
+
+    # Ground truth: movies user rated >= 4
+    user_data = ratings[ratings['userId'] == user_id]
+    relevant_movies = user_data[user_data['rating'] >= 4]
+
+    relevant_movie_ids = set(relevant_movies['movieId'])
+
+    # Map movieId to title
+    relevant_titles = set(
+        movies[movies['movieId'].isin(relevant_movie_ids)]['title']
+    )
+
+    # Intersection
+    relevant_and_recommended = recommended_titles.intersection(relevant_titles)
+
+    precision = len(relevant_and_recommended) / k
+    recall = len(relevant_and_recommended) / len(relevant_titles) if len(relevant_titles) > 0 else 0
+
+    return precision, recall
+
 
 # -----------------------------
 # Test User-Based Recommendation
 # -----------------------------
 if __name__ == "__main__":
-    print("\nUser-based recommendations:\n")
+    # Movie recommendation test
+    movie_name = "Toy Story (1995)"
+    print(f"\nTop recommendations for: {movie_name}\n")
+    print(recommend(movie_name, top_n=5))
 
+    # User recommendation test
     user_id = 1
+    print("\nUser-based recommendations:\n")
     user_recommendations = recommend_for_user(user_id, top_n=5)
 
     if user_recommendations is not None:
         print(user_recommendations)
+
+    # Evaluation
+    print("\nEvaluation Metrics:\n")
+    precision, recall = precision_recall_at_k(user_id, k=5)
+
+    print(f"Precision@5: {precision:.4f}")
+    print(f"Recall@5: {recall:.4f}")
