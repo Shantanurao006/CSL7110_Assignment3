@@ -320,6 +320,61 @@ def svd_recommend(user_id, top_n=5):
 
     return results
 
+# -----------------------------
+# Hybrid Recommendation Model
+# -----------------------------
+
+def hybrid_recommend(user_id, top_n=5, alpha=0.5):
+    # Get CBF scores (user profile)
+    user_profile = build_user_profile(user_id)
+
+    if user_profile is None:
+        return
+
+    cbf_scores = cosine_similarity(user_profile, tfidf_matrix).flatten()
+
+    # Get SVD predictions
+    R = user_item_matrix.values
+    user_ratings_mean = np.mean(R, axis=1)
+    R_demeaned = R - user_ratings_mean.reshape(-1, 1)
+
+    U, sigma, Vt = svds(R_demeaned, k=50)
+    sigma = np.diag(sigma)
+
+    R_pred = np.dot(np.dot(U, sigma), Vt) + user_ratings_mean.reshape(-1, 1)
+    preds_df = pd.DataFrame(R_pred, columns=user_item_matrix.columns, index=user_item_matrix.index)
+
+    # Map movieId to index
+    movie_id_to_index = dict(zip(movies['movieId'], movies.index))
+
+    hybrid_scores = []
+
+    for movie_id in user_item_matrix.columns:
+        if user_item_matrix.loc[user_id, movie_id] == 0:
+            # CBF score
+            idx = movie_id_to_index.get(movie_id, None)
+            if idx is None:
+                continue
+            cbf_score = cbf_scores[idx]
+
+            # CF (SVD) score
+            cf_score = preds_df.loc[user_id, movie_id]
+
+            # Combine
+            final_score = alpha * cbf_score + (1 - alpha) * cf_score
+
+            hybrid_scores.append((movie_id, final_score))
+
+    # Sort
+    hybrid_scores = sorted(hybrid_scores, key=lambda x: x[1], reverse=True)[:top_n]
+
+    movie_ids = [i[0] for i in hybrid_scores]
+    scores = [i[1] for i in hybrid_scores]
+
+    results = movies[movies['movieId'].isin(movie_ids)][['title']].copy()
+    results['hybrid_score'] = scores
+
+    return results
 
 # -----------------------------
 # Test User-Based Recommendation
@@ -370,5 +425,13 @@ if __name__ == "__main__":
 
     svd_results = svd_recommend(user_id=1, top_n=5)
     print(svd_results)
+
+    # -----------------------------
+    # Hybrid Model
+    # -----------------------------
+    print("\nHybrid Recommendations:\n")
+
+    hybrid_results = hybrid_recommend(user_id=1, top_n=5, alpha=0.5)
+    print(hybrid_results)
 
 
