@@ -219,6 +219,70 @@ def recommend_cf(user_id, top_n=5):
 
     return results
 
+    # -----------------------------
+# Item-Based Collaborative Filtering
+# -----------------------------
+
+# Transpose user-item matrix to item-user
+item_item_matrix = user_item_matrix.T
+
+# Compute item-item similarity
+item_similarity = cosine_similarity(item_item_matrix)
+
+# Convert to DataFrame
+item_similarity_df = pd.DataFrame(
+    item_similarity,
+    index=item_item_matrix.index,
+    columns=item_item_matrix.index
+)
+
+
+def predict_rating_item_based(user_id, movie_id, k=5):
+    if movie_id not in item_similarity_df.index:
+        return 0
+
+    # Movies already rated by user
+    user_ratings = user_item_matrix.loc[user_id]
+    rated_movies = user_ratings[user_ratings > 0]
+
+    # Similar items
+    similar_items = item_similarity_df[movie_id].sort_values(ascending=False)[1:k+1]
+
+    numerator = 0
+    denominator = 0
+
+    for sim_movie, similarity in similar_items.items():
+        if sim_movie in rated_movies.index:
+            rating = rated_movies[sim_movie]
+            numerator += similarity * rating
+            denominator += similarity
+
+    if denominator == 0:
+        return 0
+
+    return numerator / denominator
+
+
+def recommend_item_based(user_id, top_n=5):
+    user_ratings = user_item_matrix.loc[user_id]
+    movies_not_rated = user_ratings[user_ratings == 0].index
+
+    predictions = []
+
+    for movie_id in movies_not_rated:
+        pred = predict_rating_item_based(user_id, movie_id)
+        predictions.append((movie_id, pred))
+
+    predictions = sorted(predictions, key=lambda x: x[1], reverse=True)[:top_n]
+
+    movie_ids = [i[0] for i in predictions]
+    scores = [i[1] for i in predictions]
+
+    results = movies[movies['movieId'].isin(movie_ids)][['title']].copy()
+    results['predicted_rating'] = scores
+
+    return results
+
 
 # -----------------------------
 # Test User-Based Recommendation
@@ -252,5 +316,14 @@ if __name__ == "__main__":
     cf_recommendations = recommend_cf(user_id=1, top_n=5)
 
     print(cf_recommendations)
+
+    # -----------------------------
+    # Item-Based CF Test
+    # -----------------------------
+    print("\nItem-Based Collaborative Filtering Recommendations:\n")
+
+    item_cf_recommendations = recommend_item_based(user_id=1, top_n=5)
+
+    print(item_cf_recommendations)
 
 
